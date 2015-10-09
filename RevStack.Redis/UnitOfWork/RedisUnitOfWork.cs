@@ -12,8 +12,10 @@ namespace RevStack.Redis
         private readonly IRedisTypedClient<TEntity> _typedClient;
         private readonly string _storeKey;
         private readonly string _removeKey;
+        private bool _disposedLists;
         public RedisUnitOfWork(RedisDataContext context)
         {
+            _disposedLists = false;
             _client = context.Client();
             _typedClient = _client.As<TEntity>();
             string type = typeof(TEntity).ToString();
@@ -25,7 +27,7 @@ namespace RevStack.Redis
         {
             save();
             remove();
-            dispose();
+            disposeLists();
         }
 
         public Task CommitAsync()
@@ -52,11 +54,54 @@ namespace RevStack.Redis
             }
         }
 
-        private void dispose()
+        #region "Dispose"
+        private void disposeLists()
         {
-            _typedClient.SetSequence(0);
-            _client.Remove(_storeKey);
-            _client.Remove(_removeKey);
+            if(!_disposedLists)
+            {
+                _typedClient.SetSequence(0);
+                _client.Remove(_storeKey);
+                _client.Remove(_removeKey);
+                _disposedLists = true;
+            }
         }
+
+        private void disposeContext()
+        {
+            if (_client != null)
+            {
+                _client.Dispose();
+                _typedClient.Dispose();
+            }
+        }
+
+        ~RedisUnitOfWork()
+        {
+            disposeLists();
+            Dispose(false);
+        }
+
+        private bool disposed = false;
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!this.disposed)
+            {
+                if (disposing)
+                {
+                    disposeLists();
+                    disposeContext();
+                }
+            }
+            this.disposed = true;
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        #endregion
     }
 }
